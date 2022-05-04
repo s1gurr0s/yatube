@@ -1,7 +1,7 @@
+from django.conf import settings
+from django.core.cache import cache
 from django.test import TestCase, Client
 from django.urls import reverse
-from http import HTTPStatus
-from django.core.cache import cache
 
 from ..models import Group, Post, User
 
@@ -9,7 +9,7 @@ from ..models import Group, Post, User
 INDEX_URL = reverse('posts:index')
 POST_CREATE_URL = reverse('posts:post_create')
 UNEXISTING_PAGE = '/unexisting_page/'
-LOGIN_URL = reverse('users:login')
+LOGIN_URL = reverse(settings.LOGIN_URL)
 USERNAME = 'Author'
 USERNAME_2 = 'User_2'
 PROFILE_URL = reverse('posts:profile', args=[USERNAME])
@@ -28,7 +28,7 @@ class PostURLTests(TestCase):
         cls.user = User.objects.create(username=USERNAME)
         cls.author = Client()
         cls.author.force_login(cls.user)
-        cls.user_2 = User.objects.create_user(username=USERNAME_2)
+        cls.user_2 = User.objects.create(username=USERNAME_2)
         cls.another_user = Client()
         cls.another_user.force_login(cls.user_2)
         cls.post = Post.objects.create(
@@ -40,19 +40,11 @@ class PostURLTests(TestCase):
             slug=SLUG,
             description='Тестовое описание',
         )
-        cls.POST_DETAIL = reverse(
-            'posts:post_detail', kwargs={'post_id': cls.post.id}
-        )
-        cls.POST_EDIT = reverse(
-            'posts:post_edit', kwargs={'post_id': cls.post.id}
-        )
+        cls.POST_DETAIL = reverse('posts:post_detail', args=[cls.post.id])
+        cls.POST_EDIT = reverse('posts:post_edit', args=[cls.post.id])
         cls.POST_EDIT_REDIRECT_ANON = f'{LOGIN_URL}?next={cls.POST_EDIT}'
         cls.POST_CREATE_REDIRECT_ANON = f'{LOGIN_URL}?next={POST_CREATE_URL}'
-        cls.ADD_COMMENT = reverse(
-            'posts:add_comment',
-            kwargs={'post_id': cls.post.id}
-        )
-        cls.ADD_COMMENT_REDIRECT_ANON = f'{LOGIN_URL}?next={cls.ADD_COMMENT}'
+        cls.FOLLOW_REDIRECT_ANON = f'{LOGIN_URL}?next={FOLLOW_URL}'
 
     def test_posts_urls_exist_at_desired_location_unexist_page_unexists(self):
         """Страницы приложения доступны пользователям,
@@ -60,13 +52,21 @@ class PostURLTests(TestCase):
         """
         cache.clear()
         posts_urls_names_status_code = (
-            (self.guest, INDEX_URL, HTTPStatus.OK),
-            (self.author, POST_CREATE_URL, HTTPStatus.OK),
-            (self.guest, GROUP_URL, HTTPStatus.OK),
-            (self.guest, PROFILE_URL, HTTPStatus.OK),
-            (self.guest, UNEXISTING_PAGE, HTTPStatus.NOT_FOUND),
-            (self.author, self.POST_EDIT, HTTPStatus.OK),
-            (self.author, FOLLOW_URL, HTTPStatus.OK),
+            (self.guest, INDEX_URL, 200),
+            (self.guest, POST_CREATE_URL, 302),
+            (self.author, POST_CREATE_URL, 200),
+            (self.guest, GROUP_URL, 200),
+            (self.guest, PROFILE_URL, 200),
+            (self.guest, UNEXISTING_PAGE, 404),
+            (self.guest, self.POST_EDIT, 302),
+            (self.author, self.POST_EDIT, 200),
+            (self.guest, FOLLOW_URL, 302),
+            (self.another_user, FOLLOW_URL, 200),
+            (self.author, FOLLOW_URL, 200),
+            (self.guest, PROFILE_FOLLOW_URL, 302),
+            (self.author, PROFILE_FOLLOW_URL, 302),
+            (self.guest, PROFILE_UNFOLLOW_URL, 302),
+            (self.author, PROFILE_UNFOLLOW_URL, 404),
         )
         for client, url, status_code in posts_urls_names_status_code:
             with self.subTest(
@@ -84,9 +84,10 @@ class PostURLTests(TestCase):
             (self.another_user, self.POST_EDIT, self.POST_DETAIL),
             (self.guest, POST_CREATE_URL, self.POST_CREATE_REDIRECT_ANON),
             (self.guest, self.POST_EDIT, self.POST_EDIT_REDIRECT_ANON),
-            (self.guest, self.ADD_COMMENT, self.ADD_COMMENT_REDIRECT_ANON),
             (self.another_user, PROFILE_FOLLOW_URL, PROFILE_URL),
             (self.another_user, PROFILE_UNFOLLOW_URL, PROFILE_URL),
+            (self.author, PROFILE_FOLLOW_URL, PROFILE_URL),
+            (self.guest, FOLLOW_URL, self.FOLLOW_REDIRECT_ANON),
         )
         for client, url, redirect in posts_urls_names_redirect_addresses:
             with self.subTest(

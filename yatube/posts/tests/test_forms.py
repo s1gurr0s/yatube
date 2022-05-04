@@ -7,16 +7,21 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import Client, TestCase, override_settings
 from django.urls import reverse
 
-from ..models import Group, Post, User
+from ..models import Comment, Group, Post, User
+
+
+TEMP_MEDIA_ROOT = tempfile.mkdtemp(dir=settings.BASE_DIR)
 
 INDEX_URL = reverse('posts:index')
 POST_CREATE_URL = reverse('posts:post_create')
+LOGIN_URL = reverse(settings.LOGIN_URL)
 USERNAME = 'Author'
-PROFILE_URL = reverse('posts:profile', kwargs={'username': USERNAME})
+USERNAME_2 = 'User_2'
+PROFILE_URL = reverse('posts:profile', args=[USERNAME])
 SLUG = 'slug'
 SLUG_2 = 'slug_2'
-GROUP_URL = reverse('posts:group_list', kwargs={'slug': SLUG})
-TEMP_MEDIA_ROOT = tempfile.mkdtemp(dir=settings.BASE_DIR)
+GROUP_URL = reverse('posts:group_list', args=[SLUG])
+POST_CREATE_REDIRECT_ANON = f'{LOGIN_URL}?next={POST_CREATE_URL}'
 SMALL_GIF = (
     b'\x47\x49\x46\x38\x39\x61\x02\x00'
     b'\x01\x00\x80\x00\x00\x00\x00\x00'
@@ -25,6 +30,7 @@ SMALL_GIF = (
     b'\x02\x00\x01\x00\x00\x02\x02\x0C'
     b'\x0A\x00\x3B'
 )
+IMAGE_FOLDER = 'posts/'
 
 
 @override_settings(MEDIA_ROOT=TEMP_MEDIA_ROOT)
@@ -32,9 +38,13 @@ class PostFormTests(TestCase):
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
+        cls.guest = Client()
         cls.user = User.objects.create_user(username=USERNAME)
         cls.author = Client()
         cls.author.force_login(cls.user)
+        cls.user_2 = User.objects.create(username=USERNAME_2)
+        cls.another_user = Client()
+        cls.another_user.force_login(cls.user_2)
         cls.group = Group.objects.create(
             title='test_title',
             slug=SLUG,
@@ -53,6 +63,7 @@ class PostFormTests(TestCase):
         cls.POST_DETAIL_URL = reverse('posts:post_detail', args=[cls.post.pk])
         cls.POST_EDIT_URL = reverse('posts:post_edit', args=[cls.post.pk])
         cls.ADD_COMMENT_URL = reverse('posts:add_comment', args=[cls.post.id])
+        cls.POST_EDIT_REDIRECT = f'{LOGIN_URL}?next={cls.POST_EDIT_URL}'
 
     @classmethod
     def tearDownClass(cls):
@@ -78,7 +89,9 @@ class PostFormTests(TestCase):
             follow=True
         )
         image_name = form_data['image'].name
-        post = Post.objects.order_by('-pub_date').first()
+        post_list = Post.objects.exclude(pk=self.post.id)
+        self.assertEqual(post_list.count(), 1)
+        post = post_list[0]
         self.assertEqual(post.author, self.user)
         self.assertEqual(post.group.id, form_data['group'])
         self.assertEqual(post.text, form_data['text'])
@@ -105,13 +118,13 @@ class PostFormTests(TestCase):
             follow=True
         )
         image_name = form_data['image'].name
-        post = Post.objects.order_by('-pub_date').first()
-        self.assertRedirects(response, self.POST_DETAIL_URL)
-        self.assertEqual(post.text, form_data['text'])
-        self.assertEqual(post.group.id, form_data['group'])
+        post = response.context['post']
         self.assertEqual(post.author, self.post.author)
-        self.assertEqual(post.image.name, f'posts/{image_name}')
+        self.assertEqual(post.group.id, form_data['group'])
+        self.assertEqual(post.text, form_data['text'])
+        self.assertEqual(post.image.name, f'{IMAGE_FOLDER}{image_name}')
         self.assertEqual(Post.objects.count(), 1)
+        self.assertRedirects(response, self.POST_DETAIL_URL)
 
     def test_post_create_and_edit_pages_show_correct_context(self):
         """Шаблоны post_edit и post_create содержат корректную форму."""
@@ -131,7 +144,7 @@ class PostFormTests(TestCase):
                     form_field = response.context.get('form').fields.get(value)
                     self.assertIsInstance(form_field, expected)
 
-    def test_create_post_guest(self):
+    def test_post_create_by_guest(self):
         """При отправке валидной формы не создаётся новая запись."""
         post_count: int = Post.objects.count()
         form_data = {
@@ -141,41 +154,75 @@ class PostFormTests(TestCase):
         self.assertEqual(Post.objects.count(), post_count)
         self.assertRedirects(
             self.client.post(
-                reverse('posts:post_create'), data=form_data, follow=True),
-            '/auth/login/?next=/create/'
+                POST_CREATE_URL, data=form_data, follow=True),
+            POST_CREATE_REDIRECT_ANON
         )
 
-    def test_image_shows_correctly_context(self):
-        """Изображение передается в словаре context."""
-        urls = [
-            INDEX_URL,
-            PROFILE_URL,
-            GROUP_URL
-        ]
-        for url in urls:
-            response = self.author.get(url)
-            object_list = response.context['page_obj'][0]
-            self.assertEqual(object_list.image, self.post.image)
-
-    def test_post_detail_shows_correctly_context(self):
-        """Изображение передается в словаре context для post_detail."""
-        response = self.author.get(self.POST_DETAIL_URL)
-        self.assertEqual(self.post.image, response.context['post'].image)
-
-    def test_comment_shows_correctly(self):
-        """Комментарий отображается корректно."""
+    def test_create_comment_form(self):
+        """Проверка формы создания комментария."""
         form_data = {
             'text': 'test_text',
-            'post': self.post.id,
-            'author': self.user,
         }
         response = self.author.post(
             self.ADD_COMMENT_URL,
             data=form_data,
             follow=True
         )
-        comment = response.context['comments'][0]
-        self.assertEqual(len(response.context['comments']), 1)
+        comments = response.context['post'].comments.all()
+        comment = comments[0]
+        self.assertEqual(len(comments), 1)
         self.assertEqual(comment.text, form_data['text'])
         self.assertEqual(comment.post, self.post)
         self.assertEqual(comment.author, self.user)
+
+    def test_post_edit_by_guest_or_not_author(self):
+        """Аноним и не автор не могут отредактировать пост."""
+        form_data = {
+            'text': 'Просто сообщение',
+            'group': self.group.id,
+        }
+        clients = [self.guest, self.another_user]
+        for client in clients:
+            with self.subTest(client=client):
+                response = self.client.post(
+                    self.POST_EDIT_URL,
+                    data=form_data,
+                    follow=True,
+                )
+                if client == self.guest:
+                    self.assertRedirects(response, self.POST_EDIT_REDIRECT)
+                else:
+                    self.assertRedirects(response, self.POST_EDIT_REDIRECT)
+                    post = Post.objects.get(id=self.post.id)
+                    self.assertEqual(self.post, post)
+                    self.assertEqual(self.post.text, post.text)
+                    self.assertEqual(self.post.group, post.group)
+
+    def test_post_create_by_guest(self):
+        """Гость не может создать пост."""
+        form_data = {
+            'text': 'test_text',
+            'group': self.group.id,
+        }
+        response = self.guest.post(
+            POST_CREATE_URL,
+            data=form_data,
+            follow=True,
+        )
+        post_set = Post.objects.exclude(pk=self.post.id)
+        self.assertEqual(post_set.count(), 0)
+        self.assertRedirects(response, POST_CREATE_REDIRECT_ANON)
+
+    def test_comment_create_by_guest(self):
+        """Гость не может создать комментарий."""
+        comment = Comment.objects.all()
+        form_data = {
+            'text': 'test_text',
+        }
+        self.assertEqual(comment.count(), 0)
+        self.guest.post(
+            self.ADD_COMMENT_URL,
+            data=form_data,
+            follow=True,
+        )
+        self.assertEqual(comment.count(), 0)
