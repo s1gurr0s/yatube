@@ -143,9 +143,6 @@ class PostsPagesTests(TestCase):
         self.assertTrue(Follow.objects.filter(
             user=self.user_2, author=self.user_3).exists()
         )
-        self.assertEqual(Follow.objects.filter(
-            user=self.user_2, author=self.user_3
-        ).count(), 1)
 
     def test_unsubscribe(self):
         """Авторизованный пользователь может

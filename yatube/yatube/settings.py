@@ -157,3 +157,5 @@ CACHES = {
 }
 
 CACHE = 20
+
+POSTS_IMAGE_FOLDER = 'posts/'

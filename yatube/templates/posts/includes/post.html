@@ -16,10 +16,10 @@
 <p>
   {{ post.text|linebreaksbr }}
 </p>
-{% if post.group %}
-<a href="{% url 'posts:group_list' post.group.slug %}">
-   #{{ post.group.title }}
-</a>
+{% if post.group and not group %}
+  <a href="{% url 'posts:group_list' post.group.slug %}">
+     #{{ post.group.title }}
+  </a>
 {% endif %}
 <p>
   <a href="{% url 'posts:post_detail' post.id %}">Подробнее</a>

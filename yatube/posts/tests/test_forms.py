@@ -95,7 +95,10 @@ class PostFormTests(TestCase):
         self.assertEqual(post.author, self.user)
         self.assertEqual(post.group.id, form_data['group'])
         self.assertEqual(post.text, form_data['text'])
-        self.assertEqual(post.image.name, f'posts/{image_name}')
+        self.assertEqual(
+            post.image.name,
+            f'{settings.POSTS_IMAGE_FOLDER}{image_name}'
+        )
         self.assertEqual(Post.objects.count(), post_count + 1)
         self.assertRedirects(response, PROFILE_URL)
 
@@ -127,7 +130,7 @@ class PostFormTests(TestCase):
         self.assertRedirects(response, self.POST_DETAIL_URL)
 
     def test_post_create_and_edit_pages_show_correct_context(self):
-        """Шаблоны post_edit и post_create содержат корректную форму."""
+        """Шаблоны post_create и post_edit содержат корректную форму."""
         urls = [
             POST_CREATE_URL,
             self.POST_EDIT_URL
@@ -144,65 +147,65 @@ class PostFormTests(TestCase):
                     form_field = response.context.get('form').fields.get(value)
                     self.assertIsInstance(form_field, expected)
 
-    def test_post_create_by_guest(self):
-        """При отправке валидной формы не создаётся новая запись."""
-        post_count: int = Post.objects.count()
-        form_data = {
-            'text': 'test_post_for_form',
-            'group': self.group.pk,
-        }
-        self.assertEqual(Post.objects.count(), post_count)
-        self.assertRedirects(
-            self.client.post(
-                POST_CREATE_URL, data=form_data, follow=True),
-            POST_CREATE_REDIRECT_ANON
-        )
-
     def test_create_comment_form(self):
         """Проверка формы создания комментария."""
         form_data = {
             'text': 'test_text',
         }
-        response = self.author.post(
+        self.author.post(
             self.ADD_COMMENT_URL,
             data=form_data,
             follow=True
         )
-        comments = response.context['post'].comments.all()
-        comment = comments[0]
+        comments = Comment.objects.all()
         self.assertEqual(len(comments), 1)
+        comment = comments[0]
         self.assertEqual(comment.text, form_data['text'])
         self.assertEqual(comment.post, self.post)
         self.assertEqual(comment.author, self.user)
 
     def test_post_edit_by_guest_or_not_author(self):
         """Аноним и не автор не могут отредактировать пост."""
+        uploaded = SimpleUploadedFile(
+            name='small3.gif',
+            content=SMALL_GIF,
+            content_type='image/gif'
+        )
         form_data = {
             'text': 'Просто сообщение',
             'group': self.group.id,
+            'image': uploaded,
         }
-        clients = [self.guest, self.another_user]
-        for client in clients:
-            with self.subTest(client=client):
-                response = self.client.post(
+        clients = [
+            [self.guest, self.POST_EDIT_REDIRECT],
+            [self.another_user, self.POST_DETAIL_URL],
+        ]
+        count = Post.objects.count()
+        for client, url in clients:
+            with self.subTest(client=client, url=url):
+                response = client.post(
                     self.POST_EDIT_URL,
                     data=form_data,
                     follow=True,
                 )
-                if client == self.guest:
-                    self.assertRedirects(response, self.POST_EDIT_REDIRECT)
-                else:
-                    self.assertRedirects(response, self.POST_EDIT_REDIRECT)
-                    post = Post.objects.get(id=self.post.id)
-                    self.assertEqual(self.post, post)
-                    self.assertEqual(self.post.text, post.text)
-                    self.assertEqual(self.post.group, post.group)
+                self.assertRedirects(response, url)
+                post = Post.objects.get(id=self.post.id)
+                self.assertEqual(count, Post.objects.count())
+                self.assertEqual(self.post.text, post.text)
+                self.assertEqual(self.post.group, post.group)
+                self.assertEqual(self.post.image, post.image)
 
     def test_post_create_by_guest(self):
         """Гость не может создать пост."""
+        uploaded = SimpleUploadedFile(
+            name='small4.gif',
+            content=SMALL_GIF,
+            content_type='image/gif'
+        )
         form_data = {
             'text': 'test_text',
             'group': self.group.id,
+            'image': uploaded,
         }
         response = self.guest.post(
             POST_CREATE_URL,

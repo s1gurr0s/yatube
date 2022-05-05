@@ -17,7 +17,9 @@ SLUG = 'slug'
 GROUP_URL = reverse('posts:group_list', args=[SLUG])
 FOLLOW_URL = reverse('posts:follow_index')
 PROFILE_FOLLOW_URL = reverse('posts:profile_follow', args=[USERNAME])
+PROFILE_FOLLOW_REDIRECT_ANON = f'{LOGIN_URL}?next={PROFILE_FOLLOW_URL}'
 PROFILE_UNFOLLOW_URL = reverse('posts:profile_unfollow', args=[USERNAME])
+PROFILE_UNFOLLOW_REDIRECT_ANON = f'{LOGIN_URL}?next={PROFILE_UNFOLLOW_URL}'
 
 
 class PostURLTests(TestCase):
@@ -61,12 +63,13 @@ class PostURLTests(TestCase):
             (self.guest, self.POST_EDIT, 302),
             (self.author, self.POST_EDIT, 200),
             (self.guest, FOLLOW_URL, 302),
-            (self.another_user, FOLLOW_URL, 200),
             (self.author, FOLLOW_URL, 200),
             (self.guest, PROFILE_FOLLOW_URL, 302),
             (self.author, PROFILE_FOLLOW_URL, 302),
+            (self.another_user, PROFILE_FOLLOW_URL, 302),
             (self.guest, PROFILE_UNFOLLOW_URL, 302),
             (self.author, PROFILE_UNFOLLOW_URL, 404),
+            (self.another_user, PROFILE_UNFOLLOW_URL, 302),
         )
         for client, url, status_code in posts_urls_names_status_code:
             with self.subTest(
@@ -84,9 +87,11 @@ class PostURLTests(TestCase):
             (self.another_user, self.POST_EDIT, self.POST_DETAIL),
             (self.guest, POST_CREATE_URL, self.POST_CREATE_REDIRECT_ANON),
             (self.guest, self.POST_EDIT, self.POST_EDIT_REDIRECT_ANON),
+            (self.guest, PROFILE_FOLLOW_URL, PROFILE_FOLLOW_REDIRECT_ANON),
             (self.another_user, PROFILE_FOLLOW_URL, PROFILE_URL),
-            (self.another_user, PROFILE_UNFOLLOW_URL, PROFILE_URL),
             (self.author, PROFILE_FOLLOW_URL, PROFILE_URL),
+            (self.guest, PROFILE_UNFOLLOW_URL, PROFILE_UNFOLLOW_REDIRECT_ANON),
+            (self.another_user, PROFILE_UNFOLLOW_URL, PROFILE_URL),
             (self.guest, FOLLOW_URL, self.FOLLOW_REDIRECT_ANON),
         )
         for client, url, redirect in posts_urls_names_redirect_addresses:

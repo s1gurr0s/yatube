@@ -34,8 +34,8 @@ def profile(request, username):
         request.user.is_authenticated
         and request.user != author
         and Follow.objects.filter(
-            user=request.user, author=author,
-            user_id=request.user.id).exists()
+            user=request.user,
+            author=author).exists()
     )
     return render(request, 'posts/profile.html', {
         'author': author,
