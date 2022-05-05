@@ -61,6 +61,7 @@ class PostURLTests(TestCase):
             (self.guest, PROFILE_URL, 200),
             (self.guest, UNEXISTING_PAGE, 404),
             (self.guest, self.POST_EDIT, 302),
+            (self.another_user, self.POST_EDIT, 302),
             (self.author, self.POST_EDIT, 200),
             (self.guest, FOLLOW_URL, 302),
             (self.author, FOLLOW_URL, 200),

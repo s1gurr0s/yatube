@@ -194,6 +194,7 @@ class PostFormTests(TestCase):
                 self.assertEqual(self.post.text, post.text)
                 self.assertEqual(self.post.group, post.group)
                 self.assertEqual(self.post.image, post.image)
+                self.assertEqual(self.post.author, post.author)
 
     def test_post_create_by_guest(self):
         """Гость не может создать пост."""
