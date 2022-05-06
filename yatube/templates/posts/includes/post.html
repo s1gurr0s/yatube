@@ -16,7 +16,7 @@
 <p>
   {{ post.text|linebreaksbr }}
 </p>
-{% if post.group and not group %}
+{% if post.group and not hide_group %}
   <a href="{% url 'posts:group_list' post.group.slug %}">
      #{{ post.group.title }}
   </a>
